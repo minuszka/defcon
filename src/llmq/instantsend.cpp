@@ -944,17 +944,21 @@ std::unordered_set<uint256, StaticSaltedHasher> CInstantSendManager::ProcessPend
         // so this can add an acceptance and never remove one.
         //
         // "Active" is IsQuorumActive, the bound this node already applies to sig
-        // shares and recovered signatures: one quorum more than
-        // signingActiveQuorumCount. The signer chooses among the quorums active
-        // SIGN_HEIGHT_OFFSET blocks below its tip, so for a few blocks after a new
-        // commitment is mined it can still pick the one that has just dropped out
-        // of this node's signingActiveQuorumCount; with that narrower bound the
-        // lock fell back to the replay and could be rejected again.
+        // shares and recovered signatures: the keepOldConnections newest, more
+        // than signingActiveQuorumCount on every profile. The signer chooses
+        // among the quorums active SIGN_HEIGHT_OFFSET blocks below its tip, so
+        // for a few blocks after a new commitment is mined it can still pick the
+        // one that has just dropped out of this node's signingActiveQuorumCount;
+        // with that narrower bound the lock fell back to the replay and could be
+        // rejected again.
+        //
+        // The bound is checked before the quorum is looked up, as on the
+        // recovered-signature path: GetQuorum can rebuild a historical quorum on
+        // a cache miss, and a lock naming an old cycle must not force that work.
         CQuorumCPtr quorum;
         if (!IsQuorumRotationEnabled(llmq_params, blockIndex)) {
-            const auto named = qman.GetQuorum(llmq_params.type, islock->cycleHash);
-            if (named != nullptr && IsQuorumActive(llmq_params.type, qman, named->qc->quorumHash)) {
-                quorum = named;
+            if (IsQuorumActive(llmq_params.type, qman, islock->cycleHash)) {
+                quorum = qman.GetQuorum(llmq_params.type, islock->cycleHash);
             }
         }
         if (quorum == nullptr) {
